@@ -140,20 +140,16 @@ class SynchronousInferenceStream:
         run_id = self.run_id
         assistant_id = self.assistant_id
 
-        async def _stream_chunks_async():
-            async for chk in self.inference_client.stream_inference_response(
-                model=model,
-                api_key=resolved_api_key,
-                thread_id=thread_id,
-                message_id=message_id,
-                run_id=run_id,
-                assistant_id=assistant_id,
-                meta_data=resolved_meta_data,
-                timeout=timeout_per_chunk,
-            ):
-                yield chk
-
-        agen = _stream_chunks_async().__aiter__()
+        agen = self.inference_client.stream_inference_response(
+            model=model,
+            api_key=resolved_api_key,
+            thread_id=thread_id,
+            message_id=message_id,
+            run_id=run_id,
+            assistant_id=assistant_id,
+            meta_data=resolved_meta_data,
+            timeout=timeout_per_chunk,
+        ).__aiter__()
 
         active_loop = None
         is_new_loop = False
@@ -181,18 +177,23 @@ class SynchronousInferenceStream:
                     break
                 except Exception as exc:
                     LOG.error(f"[SyncStream] Streaming error: {exc}", exc_info=True)
-                    break
+                    raise
         finally:
-            if is_new_loop and active_loop:
-                try:
+            try:
+                if active_loop and not active_loop.is_closed():
+                    active_loop.run_until_complete(agen.aclose())
+            finally:
+                if is_new_loop and active_loop and not active_loop.is_closed():
                     pending = asyncio.all_tasks(active_loop)
                     for task in pending:
                         task.cancel()
-                        with suppress(asyncio.CancelledError):
-                            active_loop.run_until_complete(task)
+                    if pending:
+                        active_loop.run_until_complete(
+                            asyncio.gather(*pending, return_exceptions=True)
+                        )
+                    active_loop.run_until_complete(active_loop.shutdown_asyncgens())
                     active_loop.close()
-                except Exception as e:
-                    LOG.error(f"[SyncStream] Error cleanup loop: {e}")
+                    asyncio.set_event_loop(None)
 
     # ── Event streaming ────────────────────────────────────────────────────────
 

@@ -197,20 +197,23 @@ class InferenceClient(BaseAPIClient):
                     "POST", "/v1/completions", json=payload
                 ) as response:
                     response.raise_for_status()
+                    lines = response.aiter_lines()
+                    try:
+                        async for line in lines:
+                            line = line.strip()
+                            if not line or not line.startswith("data:"):
+                                continue
 
-                    async for line in response.aiter_lines():
-                        line = line.strip()
-                        if not line or not line.startswith("data:"):
-                            continue
+                            data_str = line[len("data:") :].strip()
+                            if data_str == "[DONE]":
+                                break
 
-                        data_str = line[len("data:") :].strip()
-                        if data_str == "[DONE]":
-                            break
-
-                        try:
-                            yield json.loads(data_str)
-                        except json.JSONDecodeError:
-                            continue
+                            try:
+                                yield json.loads(data_str)
+                            except json.JSONDecodeError:
+                                continue
+                    finally:
+                        await lines.aclose()
 
             except httpx.HTTPStatusError as e:
                 logging_utility.error(
