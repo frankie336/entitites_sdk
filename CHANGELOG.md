@@ -1,3 +1,33 @@
+# [1.97.0](https://github.com/project-david-ai/projectdavid/compare/v1.96.6...v1.97.0) (2026-08-22)
+
+
+### Bug Fixes
+
+* **ci:** skip incompatible NumPy stubs in mypy ([85a6243](https://github.com/project-david-ai/projectdavid/commit/85a6243da4aa817417d6ad7a26c4b1bc9b7fd9ed))
+* **ci:** skip NumPy typing submodules in mypy ([381faf5](https://github.com/project-david-ai/projectdavid/commit/381faf52b738f7efa619904cec124391e1ba55f9))
+* **deployments:** add trailing slash to list and deactivate_all endpoints ([6e98bb5](https://github.com/project-david-ai/projectdavid/commit/6e98bb5f686b0abd6fcfad698c1051a59f15c0cc))
+* **deployments:** add trailing slash to list and deactivate_all endpoints ([9d58080](https://github.com/project-david-ai/projectdavid/commit/9d58080119365ed599aa0a60a3f39918e475dd10))
+* **schemas:** TrainingConfig from entities_common ([fa436c5](https://github.com/project-david-ai/projectdavid/commit/fa436c5ea69e6c599178702baf1c3a0fc3192378))
+* **sdk:** remove unused DeploymentUpdateRequest import, fix update() payload to use dict comprehension with exclude-None ([f029e40](https://github.com/project-david-ai/projectdavid/commit/f029e40573e46cd8292279af25d31534f11841e4))
+* **stream:** close async resources before loop shutdown ([3e26147](https://github.com/project-david-ai/projectdavid/commit/3e261473bd19d9e5ca4bb30cf7b9db2f367ef935))
+* **stream:** explicitly close aiter_lines in finally block — prevents Task destroyed RuntimeWarning from dangling aiter_raw coroutines ([6d46184](https://github.com/project-david-ai/projectdavid/commit/6d461848e01ed9b0589891d9190f866d33982ac0))
+* **stream:** explicitly close async generator in stream_chunks finally block — prevents Task destroyed RuntimeWarning from dangling aiter_bytes coroutines ([b073fed](https://github.com/project-david-ai/projectdavid/commit/b073fed1e2865a542ce3933db066455042670346))
+
+
+### Features
+
+* **datasets:** add hard-delete and offset pagination ([4bdea56](https://github.com/project-david-ai/projectdavid/commit/4bdea56d1d904d8674d581d42c991072edfff787))
+* **deployments_client:** add mm_processor_kwargs to all activation and update methods ([522fad9](https://github.com/project-david-ai/projectdavid/commit/522fad910150ce2b0853ca0fea6bb188d5c9d582))
+* **sdk:** add DeploymentsClient and deprecate ModelsClient activation methods ([b66e81c](https://github.com/project-david-ai/projectdavid/commit/b66e81c9ee7f91ad426e332f1386b4d711541129))
+* **sdk:** add DeploymentsClient and deprecate ModelsClient activation methods ([b3c77e5](https://github.com/project-david-ai/projectdavid/commit/b3c77e570a6a6c5832d66c6a851d71d556ae2bda))
+* **sdk:** add on_poll heartbeat callback to wait_for_completion ([e75287b](https://github.com/project-david-ai/projectdavid/commit/e75287beebac0a3dc7c371132405840ad8639bf3))
+* **sdk:** add training.cancel() and typed TrainingConfig support ([a7c4cc1](https://github.com/project-david-ai/projectdavid/commit/a7c4cc115ea52f6e196bc207875f888ffe1ad089))
+* **sdk:** add wait_until_ready and wait_for_completion helpers ([1fb55a8](https://github.com/project-david-ai/projectdavid/commit/1fb55a84d750775dff9efbdb19b87bc400aec668))
+* **sdk:** align DeploymentsClient with hyperparam API ([05c4a56](https://github.com/project-david-ai/projectdavid/commit/05c4a56f4aeb7d37d8df0741596d23991e3953db))
+* **sdk:** align DeploymentsClient with hyperparam API ([a181456](https://github.com/project-david-ai/projectdavid/commit/a181456fd80335b5c517e89151a3758703737061))
+* **sdk:** Delete _version.py ([851c27b](https://github.com/project-david-ai/projectdavid/commit/851c27b1e2634e9d957d6b2b84e017060139a2fc))
+* **vision:** Force rebuild ([a37f332](https://github.com/project-david-ai/projectdavid/commit/a37f332df4bea6cf6420fafc81b3f269956f87f6))
+
 # [1.97.0](https://github.com/project-david-ai/projectdavid/compare/v1.96.6...v1.97.0) (2026-05-18)
 
 
