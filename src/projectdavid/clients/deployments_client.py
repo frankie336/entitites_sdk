@@ -21,13 +21,19 @@ class DeploymentsClient(BaseAPIClient):
     """
     Client for inference deployment lifecycle management.
 
-    Handles activation, updating, and deactivation of base models and
-    fine-tuned models on the Project David sovereign AI cluster.
+    Handles activation, updating, listing, and stateful deactivation of base
+    models and fine-tuned models on the Project David sovereign AI cluster.
 
-    Activation is asynchronous — the server creates a pending InferenceDeployment
-    record and returns immediately. The InferenceReconciler (running inside
-    inference_worker) picks it up on its next poll cycle and deploys the
-    corresponding Ray Serve application.
+    Activation is asynchronous. The server creates a pending
+    InferenceDeployment record and returns immediately. The
+    InferenceReconciler submits the corresponding Ray Serve application and
+    promotes the deployment to active only after Ray reports the application
+    RUNNING.
+
+    Deactivation is also asynchronous. A running or pending deployment first
+    transitions to cancelling. The InferenceReconciler removes the Ray Serve
+    application, confirms runtime teardown and GPU release, and only then marks
+    the deployment cancelled.
 
     All operations require admin privileges.
 
@@ -50,7 +56,7 @@ class DeploymentsClient(BaseAPIClient):
             gpu_memory_utilization=0.90,
         )
 
-        # Patch a live deployment without reactivating
+        # Patch a tracked deployment without reactivating it
         client.deployments.update(
             deployment_id="dep_abc123",
             max_model_len=4096,
@@ -58,14 +64,16 @@ class DeploymentsClient(BaseAPIClient):
             mm_processor_kwargs={"min_pixels": 784, "max_pixels": 200704},
         )
 
-        # List active deployments
+        # List tracked deployments and inspect lifecycle status
         deployments = client.deployments.list()
 
-        # Deactivate a base model
-        client.deployments.deactivate_base("OpenGVLab/InternVL2-4B")
+        # Request stateful deactivation of a base model
+        result = client.deployments.deactivate_base(
+            "OpenGVLab/InternVL2-4B"
+        )
 
-        # Full cluster reset
-        client.deployments.deactivate_all()
+        # Request stateful teardown of all local deployments
+        result = client.deployments.deactivate_all()
     """
 
     def __init__(
@@ -84,9 +92,9 @@ class DeploymentsClient(BaseAPIClient):
         )
         self.training_url = resolved_url.rstrip("/")
 
-    # ──────────────────────────────────────────────────────────────────────────
+    # -------------------------------------------------------------------------
     # Activation
-    # ──────────────────────────────────────────────────────────────────────────
+    # -------------------------------------------------------------------------
 
     def activate_base(
         self,
@@ -111,6 +119,14 @@ class DeploymentsClient(BaseAPIClient):
         Accepts either a ``bm_...`` prefixed catalog ID or a raw HuggingFace
         model path. The server resolves HF paths to catalog IDs automatically.
 
+        Activation is asynchronous. A successful response means the deployment
+        has been accepted into the lifecycle, normally with status ``pending``.
+        The deployment becomes ``active`` only after Project David confirms the
+        Ray Serve application is RUNNING.
+
+        Activation may be rejected while another local deployment is pending,
+        active, or cancelling.
+
         All vLLM hyperparam args are optional. Omit them to use the node-level
         env var defaults. Set them to tune this specific deployment without
         touching compose files or rebuilding images.
@@ -119,19 +135,23 @@ class DeploymentsClient(BaseAPIClient):
             base_model_id:           ``bm_...`` ID or HF path.
             target_node_id:          Optional. Pin to a specific Ray node ID.
             tensor_parallel_size:    Number of GPUs to shard across. Default 1.
-            gpu_memory_utilization:  VRAM fraction [0.10–0.95]. None = env default.
+            gpu_memory_utilization:  VRAM fraction [0.10-0.95]. None = env default.
             max_model_len:           Max sequence length in tokens. None = env default.
             max_num_seqs:            Max concurrent sequences. None = vLLM default.
             quantization:            e.g. 'awq_marlin', 'gptq'. None = full precision.
             dtype:                   e.g. 'float16', 'bfloat16'. None = float16.
             enforce_eager:           Disable CUDA graphs. None = False.
             limit_mm_per_prompt:     e.g. {'image': 2}. None = family registry default.
-            mm_processor_kwargs:     Processor-level resolution caps. None = family registry default.
-                                     Qwen2.5-VL  : {'min_pixels': 784, 'max_pixels': 50176}
-                                     Phi-3.5-Vision: {'num_crops': 4}
+            mm_processor_kwargs:     Processor-level resolution caps.
+                                     None = family registry default.
+                                     Qwen2.5-VL:
+                                     {'min_pixels': 784, 'max_pixels': 50176}
+                                     Phi-3.5-Vision:
+                                     {'num_crops': 4}
 
         Returns:
-            DeploymentActivationResponse with deployment ID, node, and serve route.
+            DeploymentActivationResponse containing the accepted deployment
+            lifecycle status and deployment metadata.
         """
         logging_utility.info(
             "DeploymentsClient: activating base model: %s", base_model_id
@@ -182,26 +202,35 @@ class DeploymentsClient(BaseAPIClient):
         mm_processor_kwargs: Optional[Dict[str, Any]] = None,
     ) -> DeploymentActivationResponse:
         """
-        Schedule a fine-tuned model (base + LoRA adapter) for inference deployment.
+        Schedule a fine-tuned model (base + LoRA adapter) for deployment.
+
+        Activation is asynchronous. A successful response means the deployment
+        has entered the lifecycle, normally as ``pending``. It becomes
+        ``active`` only after the reconciler confirms Ray Serve is RUNNING.
+
+        Activation may be rejected while another local deployment is pending,
+        active, or cancelling.
 
         All vLLM hyperparam args are optional. Omit them to use the node-level
         env var defaults.
 
         Args:
-            model_id:                ``ftm_...`` prefixed ID of the fine-tuned model.
+            model_id:                ``ftm_...`` prefixed ID.
             target_node_id:          Optional. Pin to a specific Ray node ID.
             tensor_parallel_size:    Number of GPUs to shard across. Default 1.
-            gpu_memory_utilization:  VRAM fraction [0.10–0.95]. None = env default.
+            gpu_memory_utilization:  VRAM fraction [0.10-0.95]. None = env default.
             max_model_len:           Max sequence length in tokens. None = env default.
             max_num_seqs:            Max concurrent sequences. None = vLLM default.
             quantization:            e.g. 'awq_marlin', 'gptq'. None = full precision.
             dtype:                   e.g. 'float16', 'bfloat16'. None = float16.
             enforce_eager:           Disable CUDA graphs. None = False.
             limit_mm_per_prompt:     e.g. {'image': 2}. None = family registry default.
-            mm_processor_kwargs:     Processor-level resolution caps. None = family registry default.
+            mm_processor_kwargs:     Processor-level resolution caps.
+                                     None = family registry default.
 
         Returns:
-            DeploymentActivationResponse with deployment ID, node, and serve route.
+            DeploymentActivationResponse containing the accepted deployment
+            lifecycle status and deployment metadata.
         """
         logging_utility.info(
             "DeploymentsClient: activating fine-tuned model: %s", model_id
@@ -236,9 +265,9 @@ class DeploymentsClient(BaseAPIClient):
             )
             raise
 
-    # ──────────────────────────────────────────────────────────────────────────
+    # -------------------------------------------------------------------------
     # Update (partial patch)
-    # ──────────────────────────────────────────────────────────────────────────
+    # -------------------------------------------------------------------------
 
     def update(
         self,
@@ -254,24 +283,27 @@ class DeploymentsClient(BaseAPIClient):
         tensor_parallel_size: Optional[int] = None,
     ) -> dict:
         """
-        Partially update the vLLM engine hyperparams for a live deployment.
+        Partially update vLLM engine hyperparams for a tracked deployment.
 
-        Only fields explicitly provided are sent to the server — omitted fields
+        Only fields explicitly provided are sent to the server. Omitted fields
         retain their current DB values. Changes are picked up by the
         InferenceReconciler on its next poll cycle.
 
-        Use this to tune a running deployment without reactivating it::
+        Use this to tune a tracked deployment without reactivating it::
 
             client.deployments.update(
                 deployment_id="dep_abc123",
                 max_model_len=8192,
                 gpu_memory_utilization=0.95,
-                mm_processor_kwargs={"min_pixels": 784, "max_pixels": 200704},
+                mm_processor_kwargs={
+                    "min_pixels": 784,
+                    "max_pixels": 200704,
+                },
             )
 
         Args:
             deployment_id:           ``dep_...`` ID of the deployment to patch.
-            gpu_memory_utilization:  New VRAM fraction [0.10–0.95].
+            gpu_memory_utilization:  New VRAM fraction [0.10-0.95].
             max_model_len:           New max sequence length in tokens.
             max_num_seqs:            New max concurrent sequences.
             quantization:            New quantization scheme.
@@ -288,7 +320,6 @@ class DeploymentsClient(BaseAPIClient):
             "DeploymentsClient: patching deployment: %s", deployment_id
         )
 
-        # Build payload — only include fields the caller explicitly passed
         payload = {
             k: v
             for k, v in {
@@ -321,18 +352,21 @@ class DeploymentsClient(BaseAPIClient):
             )
             raise
 
-    # ──────────────────────────────────────────────────────────────────────────
+    # -------------------------------------------------------------------------
     # Listing
-    # ──────────────────────────────────────────────────────────────────────────
+    # -------------------------------------------------------------------------
 
     def list(self) -> DeploymentListResponse:
         """
-        Return all active InferenceDeployment records.
+        Return all InferenceDeployment records tracked by Project David.
+
+        Results may include lifecycle states such as ``pending``, ``active``,
+        ``cancelling``, ``cancelled``, and ``failed``.
 
         Returns:
             DeploymentListResponse containing items and total count.
         """
-        logging_utility.info("DeploymentsClient: listing active deployments")
+        logging_utility.info("DeploymentsClient: listing tracked deployments")
         try:
             response = self.client.get(
                 f"{self.training_url}/v1/deployments/",
@@ -347,28 +381,38 @@ class DeploymentsClient(BaseAPIClient):
             )
             raise
 
-    # ──────────────────────────────────────────────────────────────────────────
+    # -------------------------------------------------------------------------
     # Deactivation
-    # ──────────────────────────────────────────────────────────────────────────
+    # -------------------------------------------------------------------------
 
     def deactivate_base(
         self,
         base_model_id: str,
     ) -> DeploymentDeactivationResponse:
         """
-        Surgically deactivate a single base model deployment.
+        Request stateful deactivation of a base-model deployment.
 
         Accepts either a ``bm_...`` prefixed catalog ID or a raw HuggingFace
         model path.
 
+        Matching pending or active deployments transition to ``cancelling``.
+        Project David removes the corresponding Ray Serve application and marks
+        the deployment ``cancelled`` only after runtime teardown and GPU release
+        are confirmed.
+
+        If no matching runtime requires teardown, the server may return
+        ``cancelled`` immediately.
+
         Args:
-            base_model_id: ``bm_...`` ID or HF path of the base model to deactivate.
+            base_model_id: ``bm_...`` ID or HF path of the base model.
 
         Returns:
-            DeploymentDeactivationResponse confirming deactivation.
+            DeploymentDeactivationResponse containing the current lifecycle
+            status, typically ``cancelling`` or ``cancelled``.
         """
         logging_utility.info(
-            "DeploymentsClient: deactivating base model: %s", base_model_id
+            "DeploymentsClient: requesting base model deactivation: %s",
+            base_model_id,
         )
         try:
             response = self.client.delete(
@@ -390,16 +434,26 @@ class DeploymentsClient(BaseAPIClient):
         model_id: str,
     ) -> DeploymentDeactivationResponse:
         """
-        Surgically deactivate a single fine-tuned model deployment.
+        Request stateful deactivation of a fine-tuned deployment.
+
+        Matching pending or active deployments transition to ``cancelling``.
+        Project David removes the corresponding Ray Serve application and marks
+        the deployment ``cancelled`` only after runtime teardown and GPU release
+        are confirmed.
+
+        If no matching runtime requires teardown, the server may return
+        ``cancelled`` immediately.
 
         Args:
-            model_id: ``ftm_...`` prefixed ID of the fine-tuned model to deactivate.
+            model_id: ``ftm_...`` prefixed fine-tuned model ID.
 
         Returns:
-            DeploymentDeactivationResponse confirming deactivation.
+            DeploymentDeactivationResponse containing the current lifecycle
+            status, typically ``cancelling`` or ``cancelled``.
         """
         logging_utility.info(
-            "DeploymentsClient: deactivating fine-tuned model: %s", model_id
+            "DeploymentsClient: requesting fine-tuned model deactivation: %s",
+            model_id,
         )
         try:
             response = self.client.delete(
@@ -418,17 +472,23 @@ class DeploymentsClient(BaseAPIClient):
 
     def deactivate_all(self) -> DeactivateAllResponse:
         """
-        Full cluster reset — deactivate all active deployments.
+        Request stateful teardown of all local inference deployments.
 
-        Removes all InferenceDeployment records. The InferenceReconciler
-        tears down all Ray Serve applications on its next poll cycle,
-        releasing all GPU reservations back to the cluster.
+        Project David preserves deployment records while matching pending or
+        active deployments transition to ``cancelling``. The
+        InferenceReconciler removes their Ray Serve applications, confirms
+        runtime teardown and GPU release, and only then settles each deployment
+        as ``cancelled``.
+
+        If no deployment currently requires teardown, the server may return
+        ``cancelled`` immediately.
 
         Returns:
-            DeactivateAllResponse confirming the reset.
+            DeactivateAllResponse containing the current lifecycle status and
+            server message.
         """
         logging_utility.warning(
-            "DeploymentsClient: requesting full cluster reset (deactivate-all)"
+            "DeploymentsClient: requesting deactivation of all deployments"
         )
         try:
             response = self.client.delete(
