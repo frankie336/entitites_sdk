@@ -1,3 +1,10 @@
+## [1.105.1](https://github.com/project-david-ai/projectdavid/compare/v1.105.0...v1.105.1) (2026-08-25)
+
+
+### Bug Fixes
+
+* align deployment client lifecycle semantics ([57a5d37](https://github.com/project-david-ai/projectdavid/commit/57a5d375a1f3f6c70012f69830b9567740635add))
+
 # [1.105.0](https://github.com/project-david-ai/projectdavid/compare/v1.104.0...v1.105.0) (2026-08-22)
 
 
