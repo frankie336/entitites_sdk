@@ -1,3 +1,10 @@
+# [1.106.0](https://github.com/project-david-ai/projectdavid/compare/v1.105.1...v1.106.0) (2026-08-29)
+
+
+### Features
+
+* add stateless completions and thread records ([882425c](https://github.com/project-david-ai/projectdavid/commit/882425c75a510e7d3a36b8d9d4e70abcefb871d8))
+
 ## [1.105.1](https://github.com/project-david-ai/projectdavid/compare/v1.105.0...v1.105.1) (2026-08-25)
 
 
