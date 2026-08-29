@@ -139,10 +139,19 @@ class ThreadsClient(BaseAPIClient):
         self, thread_id: str, new_metadata: Dict[str, Any]
     ) -> validator.ThreadRead:
         try:
-            thread = self.retrieve_thread(thread_id)
-            current_metadata = thread.meta_data
-            current_metadata.update(new_metadata)
-            return self.update_thread(thread_id, meta_data=current_metadata)
+            response = self.client.put(
+                f"/v1/threads/{thread_id}/metadata",
+                json=new_metadata,
+            )
+            response.raise_for_status()
+            return validator.ThreadRead.model_validate(response.json())
+        except httpx.HTTPStatusError as e:
+            logging_utility.error(
+                "HTTP error updating thread metadata: %d %s",
+                e.response.status_code,
+                e.response.text,
+            )
+            raise
         except Exception as e:
             logging_utility.error("Error updating thread metadata: %s", str(e))
             raise
@@ -166,6 +175,32 @@ class ThreadsClient(BaseAPIClient):
             raise
         except Exception as e:
             logging_utility.error("Unexpected error listing threads: %s", str(e))
+            raise
+
+    def list_thread_records(self, user_id: str) -> List[validator.ThreadRead]:
+        """List ordinary thread records without changing ``list_threads``."""
+        logging_utility.info("Listing thread records for user: %s", user_id)
+        try:
+            response = self.client.get(f"/v1/threads/user/{user_id}/records")
+            response.raise_for_status()
+            return [
+                validator.ThreadRead.model_validate(record)
+                for record in response.json()
+            ]
+        except httpx.HTTPStatusError as e:
+            logging_utility.error(
+                "HTTP error listing thread records: %d %s",
+                e.response.status_code,
+                e.response.text,
+            )
+            if e.response.status_code == 404:
+                return []
+            raise
+        except Exception as e:
+            logging_utility.error(
+                "Unexpected error listing thread records: %s",
+                str(e),
+            )
             raise
 
     def delete_thread(self, thread_id: str) -> validator.ThreadDeleted | None:

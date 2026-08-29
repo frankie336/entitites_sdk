@@ -1,7 +1,7 @@
 import asyncio
 import json
 import time
-from typing import Any, AsyncGenerator, Dict, Optional
+from typing import Any, AsyncGenerator, Dict, List, Optional
 
 import httpx
 from dotenv import load_dotenv
@@ -91,6 +91,50 @@ class InferenceClient(BaseAPIClient):
                 return future.result()
         else:
             return loop.run_until_complete(self.create_completion(**kwargs))
+
+    def create_stateless_completion(
+        self,
+        *,
+        model: str,
+        prompt: Optional[str] = None,
+        messages: Optional[List[Dict[str, str]]] = None,
+        provider_api_key: Optional[str] = None,
+        max_tokens: int = 256,
+        temperature: float = 0.2,
+        top_p: float = 1.0,
+    ) -> Dict[str, Any]:
+        """Run one bounded completion without conversation entity identifiers."""
+        if (prompt is None) == (messages is None):
+            raise ValueError("Provide exactly one of prompt or messages")
+
+        payload: Dict[str, Any] = {
+            "model": model,
+            "max_tokens": max_tokens,
+            "temperature": temperature,
+            "top_p": top_p,
+            "stream": False,
+            "stateless": True,
+        }
+        if prompt is not None:
+            payload["prompt"] = prompt
+        if messages is not None:
+            payload["messages"] = messages
+        if provider_api_key is not None:
+            payload["api_key"] = provider_api_key
+
+        response = self.client.post("/v1/completions", json=payload)
+        response.raise_for_status()
+        completion = response.json()
+
+        choices = completion.get("choices")
+        if not isinstance(choices, list) or not choices:
+            raise ValueError("Stateless completion response has no choices")
+        if not isinstance(choices[0], dict) or not isinstance(
+            choices[0].get("text"), str
+        ):
+            raise ValueError("Stateless completion response has no text")
+
+        return completion
 
     async def stream_inference_response(
         self,
