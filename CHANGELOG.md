@@ -1,3 +1,10 @@
+# [1.108.0](https://github.com/project-david-ai/projectdavid/compare/v1.107.0...v1.108.0) (2026-09-04)
+
+
+### Features
+
+* add local model registry client ([f696641](https://github.com/project-david-ai/projectdavid/commit/f69664155587905cea8ca67fb3ce1403d7f404eb))
+
 # [1.107.0](https://github.com/project-david-ai/projectdavid/compare/v1.106.0...v1.107.0) (2026-09-04)
 
 
