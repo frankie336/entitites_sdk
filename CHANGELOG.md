@@ -1,3 +1,10 @@
+# [1.107.0](https://github.com/project-david-ai/projectdavid/compare/v1.106.0...v1.107.0) (2026-09-04)
+
+
+### Features
+
+* expose inference runtime capabilities ([f880b25](https://github.com/project-david-ai/projectdavid/commit/f880b25da5f9b41f6112f1f3cb5b754fef832acb))
+
 # [1.106.0](https://github.com/project-david-ai/projectdavid/compare/v1.105.1...v1.106.0) (2026-08-29)
 
 
