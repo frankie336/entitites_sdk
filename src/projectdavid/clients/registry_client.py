@@ -90,6 +90,64 @@ class RegistryClient(BaseAPIClient):
             logging_utility.exception("Unexpected error registering base model")
             raise
 
+    def register_local(
+        self,
+        model_endpoint: str,
+        name: str,
+        family: Optional[str] = None,
+        parameter_count: Optional[str] = None,
+        is_multimodal: bool = False,
+    ) -> validator.BaseModelRead:
+        """
+        Register a pre-installed local model endpoint.
+
+        This is intentionally separate from register() so a local
+        filesystem locator can never be interpreted as a Hugging Face
+        model identifier.
+        """
+        logging_utility.info(
+            "RegistryClient: registering local base model endpoint: %s",
+            model_endpoint,
+        )
+
+        payload = {
+            "model_endpoint": model_endpoint,
+            "name": name,
+            "family": family,
+            "parameter_count": parameter_count,
+            "is_multimodal": is_multimodal,
+        }
+
+        payload = {key: value for key, value in payload.items() if value is not None}
+
+        try:
+            response = self.client.post(
+                f"{self.training_url}/v1/registry/base-models/local",
+                json=payload,
+            )
+            response.raise_for_status()
+
+            return validator.BaseModelRead.model_validate(response.json())
+
+        except ValidationError as e:
+            logging_utility.error(
+                "Validation error registering local model: %s",
+                e.json(),
+            )
+            raise ValueError(f"Validation error: {e}") from e
+
+        except httpx.HTTPStatusError as e:
+            logging_utility.error(
+                "HTTP %d while registering local model: %s",
+                e.response.status_code,
+                e.response.text,
+            )
+            raise
+
+        except Exception:
+            logging_utility.exception("Unexpected error registering local base model")
+            raise
+
     # ------------------------------------------------------------------
     # Listing
     # ------------------------------------------------------------------
