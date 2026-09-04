@@ -93,6 +93,45 @@ class DeploymentsClient(BaseAPIClient):
         self.training_url = resolved_url.rstrip("/")
 
     # -------------------------------------------------------------------------
+    # Runtime capabilities
+    # -------------------------------------------------------------------------
+
+    def runtime_capabilities(self) -> Dict[str, Any]:
+        """
+        Return the authoritative inference-runtime capability snapshot.
+
+        The server captures this information inside the Project David
+        inference-worker environment used by Ray Serve/vLLM. It therefore
+        describes the inference runtime rather than the SDK or API process.
+
+        Returns:
+            Raw runtime capability payload reported by Project David Core.
+
+        Raises:
+            httpx.HTTPStatusError:
+                If the Core endpoint rejects the request or is unavailable.
+            ValueError:
+                If Core returns a non-object JSON payload.
+        """
+        logging_utility.debug(
+            "DeploymentsClient: requesting inference runtime capabilities"
+        )
+
+        response = self.client.get(
+            f"{self.training_url}/v1/deployments/runtime-capabilities"
+        )
+        response.raise_for_status()
+
+        payload = response.json()
+
+        if not isinstance(payload, dict):
+            raise ValueError(
+                "Project David runtime capability response must be an object."
+            )
+
+        return payload
+
+    # -------------------------------------------------------------------------
     # Activation
     # -------------------------------------------------------------------------
 
